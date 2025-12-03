@@ -169,9 +169,6 @@ jobs:
           ssh ${{ secrets.OCI_SERVER_USER }}@${{ secrets.OCI_SERVER_IP }} << 'ENDSSH'
             cd ~/eati-infra
 
-            # Set GITHUB_REPOSITORY_OWNER environment variable
-            export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
-
             # Pull latest images
             docker compose pull
 
