@@ -1,8 +1,6 @@
 name: Deploy to OCI Server
 
 on:
-  repository_dispatch:
-    types: [images-updated]
   workflow_dispatch:
 
 jobs:
