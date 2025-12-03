@@ -1,0 +1,84 @@
+name: Deploy to OCI Server
+
+on:
+  repository_dispatch:
+    types: [images-updated]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+
+      - name: Add OCI server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.OCI_SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Copy docker-compose.yml to OCI server
+        run: |
+          ssh ${{ secrets.OCI_SERVER_USER }}@${{ secrets.OCI_SERVER_IP }} "mkdir -p ~/eati-infra"
+          scp docker-compose.yml .env ${{ secrets.OCI_SERVER_USER }}@${{ secrets.OCI_SERVER_IP }}:~/eati-infra/ || \
+          scp docker-compose.yml ${{ secrets.OCI_SERVER_USER }}@${{ secrets.OCI_SERVER_IP }}:~/eati-infra/
+
+      - name: Deploy on OCI server
+        run: |
+          ssh ${{ secrets.OCI_SERVER_USER }}@${{ secrets.OCI_SERVER_IP }} << 'ENDSSH'
+            cd ~/eati-infra
+
+            # Set GITHUB_REPOSITORY_OWNER environment variable
+            export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
+
+            # Pull latest images
+            docker compose pull
+
+            # Stop and remove old containers
+            docker compose down
+
+            # Start services
+            docker compose up -d
+
+            # Show status
+            docker compose ps
+
+            # Show logs for verification
+            docker compose logs --tail=50
+          ENDSSH
+
+      - name: Health check
+        run: |
+          ssh ${{ secrets.OCI_SERVER_USER }}@${{ secrets.OCI_SERVER_IP }} << 'ENDSSH'
+            cd ~/eati-infra
+
+            echo "Waiting for services to be healthy..."
+            sleep 10
+
+            # Check service health
+            docker compose ps
+
+            # Verify all services are running
+            if [ $(docker compose ps --status running | wc -l) -eq 3 ]; then
+              echo "All services are running successfully!"
+            else
+              echo "Some services failed to start"
+              docker compose logs
+              exit 1
+            fi
+          ENDSSH
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "Deployment successful!"
+          else
+            echo "Deployment failed!"
+          fi
