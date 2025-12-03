@@ -1,14 +1,11 @@
 name: Build and Push Docker Images
 
 on:
-  push:
+  pull_request:
     branches:
       - main
-    paths:
-      - 'postgresql/**'
-      - 'redis/**'
-      - 'mongodb/**'
-      - '.github/workflows/build-images.yml'
+    types:
+      - closed
   workflow_dispatch:
 
 env:
@@ -16,6 +13,7 @@ env:
 
 jobs:
   build-postgresql:
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -58,6 +56,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
 
   build-redis:
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -100,6 +99,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
 
   build-mongodb:
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -141,17 +141,63 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
-  notify-completion:
+  deploy:
     needs: [build-postgresql, build-redis, build-mongodb]
     runs-on: ubuntu-latest
 
     steps:
-      - name: Notify build completion
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+
+      - name: Add OCI server to known hosts
         run: |
-          echo "✅ All images built successfully!"
-          echo "Images are available at:"
-          echo "- ghcr.io/${{ github.repository_owner }}/eati-postgresql:latest"
-          echo "- ghcr.io/${{ github.repository_owner }}/eati-redis:latest"
-          echo "- ghcr.io/${{ github.repository_owner }}/eati-mongodb:latest"
-          echo ""
-          echo "🚀 Run 'Deploy to OCI Server' workflow manually to deploy"
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.OCI_SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Copy docker-compose.yml to OCI server
+        run: |
+          ssh ${{ secrets.OCI_SERVER_USER }}@${{ secrets.OCI_SERVER_IP }} "mkdir -p ~/eati-infra"
+          scp docker-compose.yml ${{ secrets.OCI_SERVER_USER }}@${{ secrets.OCI_SERVER_IP }}:~/eati-infra/
+
+      - name: Deploy on OCI server
+        run: |
+          ssh ${{ secrets.OCI_SERVER_USER }}@${{ secrets.OCI_SERVER_IP }} << 'ENDSSH'
+            cd ~/eati-infra
+
+            # Set GITHUB_REPOSITORY_OWNER environment variable
+            export GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }}
+
+            # Pull latest images
+            docker compose pull
+
+            # Stop and remove old containers
+            docker compose down
+
+            # Start services
+            docker compose up -d
+
+            # Show status
+            docker compose ps
+
+            # Show logs for verification
+            docker compose logs --tail=50
+          ENDSSH
+
+      - name: Verify deployment
+        run: |
+          ssh ${{ secrets.OCI_SERVER_USER }}@${{ secrets.OCI_SERVER_IP }} << 'ENDSSH'
+            cd ~/eati-infra
+
+            echo "Waiting for services to start..."
+            sleep 10
+
+            # Check service status
+            docker compose ps
+
+            echo "✅ Deployment completed!"
+          ENDSSH
