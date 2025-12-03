@@ -125,7 +125,6 @@ GitHub 레포지토리 Settings > Secrets and variables > Actions에서 다음 s
 - `OCI_SSH_PRIVATE_KEY`: OCI 서버 접속용 SSH 개인키
 - `OCI_SERVER_IP`: OCI 서버 IP 주소
 - `OCI_SERVER_USER`: OCI 서버 SSH 사용자명 (예: ubuntu, opc)
-- `GHCR_PAT`: GitHub Personal Access Token (packages:read, packages:write 권한)
 
 ### 2. SSH 키 생성 및 설정
 
@@ -140,14 +139,20 @@ ssh-copy-id -i ~/.ssh/oci_deploy.pub user@your-oci-server-ip
 cat ~/.ssh/oci_deploy
 ```
 
-### 3. GitHub Personal Access Token 생성
+### 3. 이미지 공개 설정
 
-1. GitHub Settings > Developer settings > Personal access tokens > Tokens (classic)
-2. Generate new token (classic)
-3. 권한 선택:
-   - `write:packages` (패키지 푸시)
-   - `read:packages` (패키지 다운로드)
-4. 생성된 토큰을 GitHub Secrets의 `GHCR_PAT`에 추가
+첫 빌드 후 GitHub Container Registry의 패키지를 public으로 설정하세요:
+
+1. GitHub 프로필 > Packages
+2. 각 패키지(eati-postgresql, eati-redis, eati-mongodb) 선택
+3. Package settings > Change visibility > Public
+
+또는 private으로 유지하고 OCI 서버에서 GHCR 로그인:
+
+```bash
+# OCI 서버에서 실행
+echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_USERNAME --password-stdin
+```
 
 ### 4. 자동 빌드 및 배포 프로세스
 
@@ -347,10 +352,10 @@ docker compose up -d
 
 1. `.env` 파일은 절대 커밋하지 마세요
 2. 강력한 비밀번호를 사용하세요
-3. GHCR 이미지를 private으로 유지하거나, OCI 서버에서 인증 설정
+3. GHCR 이미지를 public으로 설정하거나, private 유지 시 OCI 서버에서 인증 설정
 4. 프로덕션 환경에서는 방화벽 규칙을 엄격하게 설정하세요
 5. 정기적으로 백업을 수행하세요
-6. GitHub Personal Access Token을 안전하게 관리하세요
+6. SSH 키를 안전하게 관리하세요
 
 ## 트러블슈팅
 

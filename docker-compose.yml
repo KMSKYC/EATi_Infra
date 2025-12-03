@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  postgresql:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-eati}/eati-postgresql:latest
+    container_name: eati-postgresql
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-eati}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    networks:
+      - eati-network
+
+  redis:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-eati}/eati-redis:latest
+    container_name: eati-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: >
+      sh -c "sed -i 's/^# requirepass .*/requirepass ${REDIS_PASSWORD}/' /usr/local/etc/redis/redis.conf &&
+             redis-server /usr/local/etc/redis/redis.conf"
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - eati-network
+
+  mongodb:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-eati}/eati-mongodb:latest
+    container_name: eati-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-eati}
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+      - mongodb_logs:/var/log/mongodb
+    networks:
+      - eati-network
+
+networks:
+  eati-network:
+    driver: bridge
+
+volumes:
+  postgresql_data:
+    driver: local
+  redis_data:
+    driver: local
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  mongodb_logs:
+    driver: local
